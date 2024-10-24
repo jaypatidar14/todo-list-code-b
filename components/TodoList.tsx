@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Edit, Check, X, Plus } from 'lucide-react';
 
 interface Todo {
-  id: number;
+  id: string;
   text: string;
   completed: boolean;
 }
@@ -12,24 +12,73 @@ interface Todo {
 export default function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState('');
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const addTodo = () => {
-    if (newTodo.trim()) {
-      setTodos([...todos, { id: Date.now(), text: newTodo.trim(), completed: false }]);
-      setNewTodo('');
+  // Fetch todos on component mount
+  useEffect(() => {
+    fetchTodos();
+  }, []);
+
+  const fetchTodos = async () => {
+    try {
+      const response = await fetch('/api/todos');
+      const data = await response.json();
+      setTodos(data);
+    } catch (error) {
+      console.error('Error fetching todos:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteTodo = (id: number) => {
-    setTodos(todos.filter(todo => todo.id !== id));
+  const addTodo = async () => {
+    if (newTodo.trim()) {
+      try {
+        const response = await fetch('/api/todos', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: newTodo.trim() }),
+        });
+        const todo = await response.json();
+        setTodos([todo, ...todos]);
+        setNewTodo('');
+      } catch (error) {
+        console.error('Error adding todo:', error);
+      }
+    }
   };
 
-  const toggleTodo = (id: number) => {
-    setTodos(todos.map(todo =>
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
-    ));
+  const deleteTodo = async (id: string) => {
+    try {
+      await fetch(`/api/todos/${id}`, {
+        method: 'DELETE',
+      });
+      setTodos(todos.filter(todo => todo.id !== id));
+    } catch (error) {
+      console.error('Error deleting todo:', error);
+    }
+  };
+
+  const toggleTodo = async (id: string, completed: boolean) => {
+    try {
+      const response = await fetch(`/api/todos/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ completed: !completed }),
+      });
+      const updatedTodo = await response.json();
+      setTodos(todos.map(todo =>
+        todo.id === id ? updatedTodo : todo
+      ));
+    } catch (error) {
+      console.error('Error toggling todo:', error);
+    }
   };
 
   const startEditing = (todo: Todo) => {
@@ -37,12 +86,24 @@ export default function TodoList() {
     setEditText(todo.text);
   };
 
-  const saveEdit = () => {
-    if (editingId !== null) {
-      setTodos(todos.map(todo =>
-        todo.id === editingId ? { ...todo, text: editText.trim() } : todo
-      ));
-      setEditingId(null);
+  const saveEdit = async () => {
+    if (editingId !== null && editText.trim()) {
+      try {
+        const response = await fetch(`/api/todos/${editingId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: editText.trim() }),
+        });
+        const updatedTodo = await response.json();
+        setTodos(todos.map(todo =>
+          todo.id === editingId ? updatedTodo : todo
+        ));
+        setEditingId(null);
+      } catch (error) {
+        console.error('Error updating todo:', error);
+      }
     }
   };
 
@@ -50,6 +111,10 @@ export default function TodoList() {
     setEditingId(null);
     setEditText('');
   };
+
+  if (loading) {
+    return <div className="max-w-md mx-auto p-4">Loading...</div>;
+  }
 
   return (
     <div className="max-w-md mx-auto p-4">
@@ -95,7 +160,7 @@ export default function TodoList() {
                 <input
                   type="checkbox"
                   checked={todo.completed}
-                  onChange={() => toggleTodo(todo.id)}
+                  onChange={() => toggleTodo(todo.id, todo.completed)}
                   className="w-4 h-4"
                 />
                 <span className={`flex-1 ${todo.completed ? 'line-through text-gray-500' : ''}`}>
